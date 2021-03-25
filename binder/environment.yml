@@ -1,0 +1,10 @@
+name: dask-binder-template
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - dask=2021.03.0
+  # JupyterLab extensions
+  - jupyterlab>=3
+  - dask-labextension
+  - ipywidgets

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "file-browser-filebrowser:cwd": {
+      "path": ""
+    },
+    "dask-dashboard-launcher": {
+      "url": "DASK_DASHBOARD_URL"
+    }
+  },
+  "metadata": {
+    "id": "/lab"
+  }
+}

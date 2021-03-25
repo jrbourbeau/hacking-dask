@@ -1,4 +1,4 @@
-name: Binder
+name: Build
 on: [push]
 
 jobs:

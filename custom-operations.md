@@ -46,21 +46,58 @@ custom functions.
 
 
 ### Array
+
 ```python
 import dask.array as da
+
 a = da.arange(6, chunks=3)
 
 result = a.map_blocks(lambda x: x * 2)
 result.compute()
 ```
 
+Map_blocks aligns blocks by block positions without regard to shape.
+In the following example we have two arrays with the same number of blocks
+but with different shape and chunk sizes.
 
+```python
+import numpy as np
+import dask.array as da
+
+x = da.arange(1000, chunks=(100,))
+y = da.arange(100, chunks=(10,))
+
+def func(a, b, block_info=None):
+    return np.array([a.max(), b.max()])
+
+da.map_blocks(func, x, y, chunks=(2,))
+```
+
+There are special arguments that you can use within functions that you pass to ``map_blocks``.
+These can be used to create an array from scratch.
+
+```python
+import numpy as np
+import dask.array as da
+
+x = da.empty(100, shape=(10,10), chunks=(1, 1))
+
+def generate_data(a, block_id=None):
+    ii, jj = block_id
+    return np.arange(ii*200, (ii+1)*200).reshape((10, 20))
+
+da.map_blocks(generate_data, x, chunks=(10, 20), dtype=int)
+```
+
+This example might feel contrived, but it can be useful when creating custom IO operations
+especially in a distributed context.
 
 ### DataFrame
 
 ```python
 import pandas as pd
 import dask.dataframe as dd
+
 df = pd.DataFrame({'x': [1, 2, 3, 4, 5],
                    'y': [1., 2., 3., 4., 5.]})
 ddf = dd.from_pandas(df, npartitions=2)
@@ -69,6 +106,7 @@ result = ddf.map_partitions(lambda df, threshold: (df.x + df.y) > threshold, thr
 result.compute()
 ```
 
+#### Internal uses
 In practice ``map_partitions`` is used to implement many of the helper dataframe methods
 that let Dask dataframe mimic Pandas. Here is the implementation of `ddf.index` for instance:
 
@@ -103,13 +141,16 @@ When you need the edges of one block in the next block you can use Overlapping C
 
 ## Reduction
 
-**Related Documentation
+**Related Documentation**
    - [`dask.array.reduction`](http://dask.pydata.org/en/latest/array-api.html#dask.dataframe.Array.reduction)
    - [`dask.dataframe.reduction`](http://dask.pydata.org/en/latest/dataframe-api.html#dask.dataframe.DataFrame.reduction)
 
 ## Blockwise Computations
 
-Blockwise computations provide the infrastructure for implementing
+Blockwise computations provide the infrastructure for implementing ``map_blocks`` and many
+of the elementwise methods that make up the Array API.
+
+They present a really powerful way of implementing matrix operations.
 
 **Related Documentation**
 
@@ -126,5 +167,33 @@ z = da.blockwise(operator.add, 'ij', x, 'ji', y, 'ij')
 z.compute()
 ```
 
+Now try switching the block pattern of the output:
+
+```python
+z = da.blockwise(operator.add, 'ji', x, 'ji', y, 'ij')
+z.compute()
+```
+In each of these case the outcome for each block is the same. But in the first case
+the blocks are placed side-by-side (shape=(4, 2)) and in the second they are stacked vertically
+(shape=(2, 4))
+
+### Internal uses
+
+This is the internal definition of transpose on dask.Array. In it you can see that there is a
+regular ``np.transpose`` applied within each block and then the blocks are themselves transposed.
+
+```python
+def transpose(a, axes=None):
+    if axes:
+        if len(axes) != a.ndim:
+            raise ValueError("axes don't match array")
+    else:
+        axes = tuple(range(a.ndim))[::-1]
+    axes = tuple(d + a.ndim if d < 0 else d for d in axes)
+    return blockwise(
+        np.transpose, axes, a, tuple(range(a.ndim)), dtype=a.dtype, axes=axes
+    )
+```
+[source](https://github.com/dask/dask/blob/4569b150db36af0aa9d9a8d318b4239a78e2eaec/dask/array/routines.py#L161:L170)
 
 ## Groupby Aggregation

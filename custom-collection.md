@@ -538,6 +538,76 @@ with each task already computed:
 x2.__dask_graph__()
 ```
 
+### Exercise
+Try writing your own dask collection for different type of iterable. Some ideas are a dict, or a list.
+
+Optionally:
+
+- include a `classmethod` that takes in a standard python object and returns the dask collection.
+- write an `__len__` method.
+
+<details>
+
+```python
+from itertools import chain
+
+import dask
+from dask.base import DaskMethodsMixin, replace_name_in_key
+from dask.optimization import fuse
+
+
+class List(DaskMethodsMixin):
+    def __init__(self, dsk, keys):
+        self._dsk = dsk
+        self._keys = keys
+
+    def __dask_graph__(self):
+        return self._dsk
+
+    def __dask_keys__(self):
+        return self._keys
+
+    @staticmethod
+    def __dask_optimize__(dsk, keys, **kwargs):
+        dsk2, _ = fuse(dsk, keys)
+        return dsk2
+
+    # Use the threaded scheduler by default.
+    __dask_scheduler__ = staticmethod(dask.threaded.get)
+
+    def __dask_postcompute__(self):
+        return lambda args: list(chain(*args)), ()
+
+    def __dask_postpersist__(self):
+        return List._rebuild, (self._keys,)
+
+    @staticmethod
+    def _rebuild(dsk, keys, *, rename=None):
+        if rename is not None:
+            keys = [replace_name_in_key(key, rename) for key in keys]
+        return List(dsk, keys)
+
+    def __dask_tokenize__(self):
+        return self._keys
+
+    @classmethod
+    def from_list(cls, value, name, n_blocks=1):
+        dsk = {}
+        step = len(value) // n_blocks
+        i = 0
+        if step > 0:
+            while i * step < len(value) - step:
+                dsk[(name, i)] = value[i * step: (i + 1) * step]
+                i += 1
+        dsk[(name, i)] = value[i * step:]
+        return cls(dsk, list(dsk.keys()))
+
+    def __len__(self):
+        return sum(len(self._dsk[k]) for k in self._keys)
+```
+
+</details>
+
 ## Checking if an object is a Dask collection
 
 To check if an object is a Dask collection, use

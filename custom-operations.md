@@ -4,9 +4,11 @@ There are many algorithms that are pre-defined for different types of Dask colle
 (such as Arrays, DataFrames and Bags). Sometimes for more niche use-cases, these predefined
 algorithms are not sufficient.
 
-We have seen that you can wrap arbitrary functions in ``dask.delayed`` to parallelize them,
-but when you have a Dask collection already, ``dask.delayed`` doesn't know how to operate on
-the blocks. In these cases there are several different ways in which you can set up
+You can wrap arbitrary functions in ``dask.delayed`` to parallelize them,
+but when you are operating on a a Dask collection or several Dask collections,
+``dask.delayed`` won't understand the organization of your blocks.
+
+In these cases there are several different ways in which you can set up
 custom functions.
 
 -   All collections have a ``map_partitions`` or ``map_blocks`` function, that
@@ -37,7 +39,8 @@ custom functions.
   - [Best Practices](https://docs.dask.org/en/latest/best-practices.html#learn-techniques-for-customization)
 
 ## Block Computations
-
+Block computations operate on a per-block basis. They are simple to think about, but can be tricky to get right.
+We'll explore some best practices for setting them up.
 
 **Related Documentation**
 
@@ -47,16 +50,80 @@ custom functions.
 
 ### Array
 
+Here is a straightforward case of `map_blocks` on a Dask array.
+
 ```python
 import dask.array as da
 
-a = da.arange(6, chunks=3)
+a = da.arange(0, 6, chunks=3)
 
 result = a.map_blocks(lambda x: x * 2)
 result.compute()
 ```
 
-Map_blocks aligns blocks by block positions without regard to shape.
+When we compute the result, we see that every item in ``a`` is squared.
+
+This is equivalent to:
+
+```python
+same = a**2
+same.compute()
+```
+
+We can use ``.visualize`` to convince ourselves that the task graph for both these
+operations has the same structure. Two entirely independent "towers":
+
+```python
+result.visualize()
+```
+
+```python
+same.visualize()
+```
+
+When the operation is more convoluted it can help to start by writing a function that works as expected
+on one block before passing it to ``map_blocks``.
+
+#### Exercise
+Write a function that takes the first element of the block and subtracts it from all the following items.
+
+<details>
+
+```python
+def func(block):
+    return block - block[0]
+```
+
+</details>
+
+Test the function out on any block of ``a``: ``a.blocks[1]``.
+
+<details>
+
+```python
+func(a.blocks[1]).compute()
+# array([0, 1, 2])
+```
+
+</details>
+
+Now pass that function to ``map_blocks``
+
+<details>
+
+```python
+da.map_blocks(func, a).compute()
+array([0, 1, 2, 0, 1, 2])
+```
+
+</details>
+
+
+#### Multiple arrays
+
+Map_blocks can be used to combine several Dask arrays. When multiple arrays are passed, ``map_blocks``
+aligns blocks by block positions without regard to shape.
+
 In the following example we have two arrays with the same number of blocks
 but with different shape and chunk sizes.
 
@@ -67,20 +134,50 @@ import dask.array as da
 x = da.arange(1000, chunks=(100,))
 y = da.arange(100, chunks=(10,))
 
-def func(a, b, block_info=None):
+def func(a, b):
     return np.array([a.max(), b.max()])
 
 da.map_blocks(func, x, y, chunks=(2,))
 ```
 
-There are special arguments that you can use within functions that you pass to ``map_blocks``.
-These can be used to create an array from scratch.
+In the example above we explicitly declare what the size of the output chunks will be ``chunks=(2,)`` this
+is short-hand for ``chunks=((2, 2, 2, 2, 2, 2, 2, 2, 2, 2,),)`` meaning 10 blocks each with shape ``(2,)``.
+
+Specifying the output chunks is very useful when doing more involved operations with ``map_blocks``
+
+#### Exercise
+
+See what happens when you don't specify ``chunks`` in the operation above.
+
+#### Special arguments
+
+There are special arguments (``block_info`` and ``block_id``) that you can use within ``map_blocks`` functions.
+Let's use the case from above and print ``block_info`` so that we can get a sense of what's going on:
 
 ```python
 import numpy as np
 import dask.array as da
 
-x = da.empty(100, shape=(10,10), chunks=(1, 1))
+x = da.arange(1000, chunks=(100,))
+y = da.arange(100, chunks=(10,))
+
+def func(a, b, block_info=None):
+    print(block_info)
+    return np.array([a.max(), b.max()])
+
+da.map_blocks(func, x, y, chunks=(2,)).compute()
+```
+
+One of the use cases for the ``block_info`` and ``block_id`` arguments is to create an array from scratch.
+
+In the following example we first create an empty array with the desired number of chunks: 10x10. Then we
+fill each chunk with
+
+```python
+import numpy as np
+import dask.array as da
+
+x = da.empty(100, shape=(10, 10), chunks=(1, 1))
 
 def generate_data(a, block_id=None):
     ii, jj = block_id
@@ -91,6 +188,12 @@ da.map_blocks(generate_data, x, chunks=(10, 20), dtype=int)
 
 This example might feel contrived, but it can be useful when creating custom IO operations
 especially in a distributed context.
+
+#### Exercise
+
+Say you have a set of images that each represent a particular portion of a scene. How can you use the
+technique we just learned to patch them together?
+
 
 ### DataFrame
 
@@ -163,7 +266,7 @@ x = da.from_array([[1, 2],
                    [3, 4]], chunks=(1, 2))
 y = da.from_array([[10, 20],
                    [0, 0]])
-z = da.blockwise(operator.add, 'ij', x, 'ji', y, 'ij')
+z = da.blockwise(operator.add, 'ij', x, 'ji', y, 'ji')
 z.compute()
 ```
 
@@ -173,6 +276,7 @@ Now try switching the block pattern of the output:
 z = da.blockwise(operator.add, 'ji', x, 'ji', y, 'ij')
 z.compute()
 ```
+
 In each of these case the outcome for each block is the same. But in the first case
 the blocks are placed side-by-side (shape=(4, 2)) and in the second they are stacked vertically
 (shape=(2, 4))

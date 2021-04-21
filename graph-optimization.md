@@ -202,6 +202,7 @@ with dask.config.set(array_optimize=my_optimize_function,
                     delayed_optimize=my_other_optimize_function):
        ...
 ```
+
 You do not need to specify all collections.  Collections will default to their
 standard optimization scheme (which is usually a good choice).
 

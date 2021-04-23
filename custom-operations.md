@@ -192,10 +192,42 @@ especially in a distributed context.
 #### Exercise
 
 Say you have a set of images that each represent a particular portion of a scene. How can you use the
-technique we just learned to patch them together?
+technique we just learned to patch them together? There's a puzzle in the puzzle directory:
 
+```python
+from imageio import imread
+import matplotlib.pyplot as plt
+
+image = imread("puzzle/bicycle.png")
+plt.imshow(image)
+```
+
+Now use ``map_blocks`` to read in the puzzle pieces from "bicycle_ii_jj.png"
+
+<details>
+
+```python
+from imageio import imread
+import matplotlib.pyplot as plt
+
+a = da.empty(shape=(2, 2, 4), chunks=((1, 1), (1, 1), (4,)))
+
+def reader(block, block_id=None):
+    ii, jj, _ = block_id
+    return imread(f"puzzle/bicycle_{ii}_{jj}.png")
+
+result = da.map_blocks(reader, a, dtype=int, chunks=((24, 24), (24, 24), (4)))
+plt.imshow(result)
+```
+
+</details>
 
 ### DataFrame
+
+There is a similar notion in Dask dataframe called ``map_partitions``.
+
+Here is an example of using it to check if the sum of two columns is greater than some
+arbitrary ``threshold``.
 
 ```python
 import pandas as pd
@@ -227,17 +259,16 @@ def index(self):
 ```
 [source](https://github.com/dask/dask/blob/09862ed99a02bf3a617ac53b116f9ecf81eea338/dask/dataframe/core.py#L458-L467)
 
-
-
 ### When not to use ``map_blocks`` ``map_partitions``
 
 Both ``map_blocks`` and ``map_partitions`` operate on each block in isolation. This
 makes them ill-suited for operations that depend on outcomes in other chunks.
 It also means that there will always be at least one result per block.
 
-When you need the edges of one block in the next block you can use Overlapping Computations
+When you need the edges of one block in the next block you can use overlapping computations.
 
 ## Overlapping Computations
+
 
 **Related Documentation**
    - [Array Overlap](https://docs.dask.org/en/latest/array-overlap.html)
@@ -266,14 +297,14 @@ x = da.from_array([[1, 2],
                    [3, 4]], chunks=(1, 2))
 y = da.from_array([[10, 20],
                    [0, 0]])
-z = da.blockwise(operator.add, 'ij', x, 'ji', y, 'ji')
+z = da.blockwise(operator.add, 'ji', x, 'ji', y, 'ji')
 z.compute()
 ```
 
-Now try switching the block pattern of the output:
+Try switching the block pattern of the output:
 
 ```python
-z = da.blockwise(operator.add, 'ji', x, 'ji', y, 'ij')
+z = da.blockwise(operator.add, 'ij', x, 'ji', y, 'jj')
 z.compute()
 ```
 
@@ -301,3 +332,81 @@ def transpose(a, axes=None):
 [source](https://github.com/dask/dask/blob/4569b150db36af0aa9d9a8d318b4239a78e2eaec/dask/array/routines.py#L161:L170)
 
 ## Groupby Aggregation
+
+There are many standard reductions supported by default on dataframe groupbys. These include methods like `mean, max, min, sum, nunique`. These are easily scaled and parallelized.
+
+**Related Documentation**
+
+   - [DataFrame Groupby](https://docs.dask.org/en/latest/dataframe-groupby.html#aggregate)
+   - [Examples](https://examples.dask.org/dataframes/02-groupby.html)
+
+If you are trying to run a custom function on the groups in a groupby it can be tempting to use `.apply` but this is often a poor choice because it requires that the data be shuffled. Instead you should try writing a custom aggregation.
+
+In order to do that you need to write three functions:
+
+- `chunk`: operates on the series groupby on each individual partition (`ddf.partitions[0].groupby("name")["x"]`)
+- `aggregate`: operates on the concatenated output from calling chunk on every partition
+- `finalize`: operates on the output from calling aggregate - returns one column. This one is actually optional.
+
+Here's an example of a custom aggregation for calculating the mean.
+
+```python
+import dask
+import dask.dataframe as dd
+
+ddf = dask.datasets.timeseries()
+
+custom_mean = dd.Aggregation(
+    'custom_mean',
+    lambda s: print(type(s)); (s.count(), s.sum()),
+    lambda count, sum: (count.sum(), sum.sum()),
+    lambda count, sum: sum / count,
+)
+ddf.groupby('name').agg(custom_mean)
+```
+
+Here is how it works:
+
+- every partition (one per day) group by ``name``
+- on each of those pandas series groupby objects calculate the `count` and the `sum`
+- concatenate every 8 (this is configurable) outputs together
+- sum of each of these
+- finally: divide the `sum` by the `count`
+
+This is equivalent to:
+
+```python
+ddf.groupby('name').mean()
+```
+
+> NOTE: If you look at the task graph you'll see that the structure of the computation is actually pretty different. That's because `.mean` computes the `sum` and the `count` independently and only combines the values at the end.
+
+Similarly you could use apply (DON'T DO THIS)
+
+```python
+ddf.groupby("name").apply(lambda x: x.mean())
+```
+
+This will shuffle the data so that all the data for a particular name is in the same partition. If you call `.compute()` on it you'll notice that it's much slower (about 50x on my computer).
+
+### Exercise
+
+Write a custom aggregation to calculate `value_counts`.
+
+<details>
+
+```python
+import dask
+import dask.dataframe as dd
+
+ddf = dask.datasets.timeseries()
+
+custom_value_counts = dd.Aggregation(
+    'custom_value_counts',
+    lambda s: s.value_counts(),
+    lambda counts: counts.sum(),
+)
+ddf.groupby('name').agg(custom_value_counts)
+```
+
+</details>

@@ -26,8 +26,7 @@ by inlining cheap operations (``inline``, ``inline_functions``).
 Below, we show an example walking through the use of some of these to optimize
 a task graph.
 
-Example
--------
+## Example
 
 Suppose you had a custom Dask graph for doing a word counting task:
 
@@ -55,7 +54,8 @@ dsk = {'words': 'apple orange apple pear orange pear pear',
        'format3': (format_str, 'count3', 'val3', 'nwords'),
        'print1': (print_and_return, 'format1'),
        'print2': (print_and_return, 'format2'),
-       'print3': (print_and_return, 'format3')}
+       'print3': (print_and_return, 'format3'),
+}
 
 dask.visualize(dsk, verbose=True, collapse_outputs=True)
 ```
@@ -63,6 +63,8 @@ dask.visualize(dsk, verbose=True, collapse_outputs=True)
 Here we are counting the occurrence of the words ``'orange``, ``'apple'``, and
 ``'pear'`` in the list of words, formatting an output string reporting the
 results, printing the output, and then returning the output string.
+
+## Cull
 
 To perform the computation, we first remove unnecessary components from the
 graph using the ``cull`` function and then pass the Dask graph and the desired
@@ -87,6 +89,39 @@ the graph.
 Culling is part of the default optimization pass of almost all collections.
 Often you want to call it somewhat early to reduce the amount of work done in
 later steps.
+
+
+### In practice
+
+Cull is very useful for operating on partitioned data. For instance consider the
+case of a timeseries stored in a parquet file where each parition represents one
+day. Let's generate such a timeseries:
+
+```python
+import dask
+import dask.dataframe as dd
+
+dask.datasets.timeseries().to_parquet("timeseries")
+```
+
+Now read in the data and look at the task graph:
+
+```python
+ddf = dd.read_parquet("timeseries")
+ddf.visualize(optimize_graph=True)
+```
+
+If you select a subset of the days, you'll see that you only read in data from the partition that you need:
+
+```python
+ddf["2000-01-13"].visualize(optimize_graph=True)
+```
+
+Any operations that you chain on after that, wh
+
+## Inline
+
+Back to the fruits!
 
 Looking at the task graph above, there are multiple accesses to constants such
 as ``'val1'`` or ``'val2'`` in the Dask graph. These can be inlined into the
@@ -117,6 +152,8 @@ results = get(dsk3, outputs)
 dask.visualize(dsk3, verbose=True, collapse_outputs=True)
 ```
 
+## Fuse
+
 Now we have a set of purely linear tasks. We'd like to have the scheduler run
 all of these on the same worker to reduce data serialization between workers.
 One option is just to merge these linear chains into one big task using the
@@ -129,6 +166,8 @@ dsk4, dependencies = fuse(dsk3)
 results = get(dsk4, outputs)
 dask.visualize(dsk4, verbose=True, collapse_outputs=True)
 ```
+
+## Result
 
 Putting it all together:
 
@@ -208,3 +247,63 @@ standard optimization scheme (which is usually a good choice).
 
 When creating your own collection, you can specify the optimization function
 by implementing a ``_dask_optimize__`` method.
+
+## Exercise
+
+This exercise is based off of [graphchain](https://github.com/radix-ai/graphchain)
+which implements a custom optimization function that reads data from
+cache if it has already been computed.
+
+Given this task graph:
+
+```python
+import dask
+import pandas as pd
+
+def create_dataframe(num_rows, num_cols):
+    print('Creating DataFrame...')
+    return pd.DataFrame(data=[range(num_cols)]*num_rows)
+
+def complicated_computation(df, num_quantiles):
+    print('Running complicated computation on DataFrame...')
+    return df.quantile(q=[i / num_quantiles for i in range(num_quantiles)])
+
+def summarise_dataframes(*dfs):
+    print('Summing DataFrames...')
+    return sum(df.sum().sum() for df in dfs)
+
+dsk = {
+    'df_a': (create_dataframe, 10_000, 1000),
+    'df_b': (create_dataframe, 10_000, 1000),
+    'df_c': (complicated_computation, 'df_a', 2048),
+    'df_d': (complicated_computation, 'df_b', 2048),
+    'result': (summarise_dataframes, 'df_c', 'df_d')
+}
+
+%time dask.get(dsk, 'result')
+```
+
+Write an optimization function that replaces one ofthe matching tasks with a key
+pointing to the other task.
+
+> NOTE: This is a much more simplistic approach than graphchain uses, and it's less
+> useful in a distributed context.
+
+```python
+def optimize(dsk):
+    # see if any values match
+    new_dsk = dsk.copy()
+
+    flipped_dict = {}
+    for k, v in dsk.items():
+        if v not in flipped_dict:
+            flipped_dict[v] = k
+        else:
+            new_dsk[k] = flipped_dict[v]
+    return new_dsk
+
+
+%time dask.get(optimize(dsk), 'result')
+```
+
+Challenge: Can you do more?

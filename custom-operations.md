@@ -5,7 +5,7 @@ There are many algorithms that are pre-defined for different types of Dask colle
 algorithms are not sufficient.
 
 You can wrap arbitrary functions in ``dask.delayed`` to parallelize them,
-but when you are operating on a a Dask collection or several Dask collections,
+but when you are operating on a Dask collection or several Dask collections,
 ``dask.delayed`` won't understand the organization of your blocks.
 
 In these cases there are several different ways in which you can set up
@@ -268,10 +268,80 @@ It also means that there will always be at least one result per block.
 When you need the edges of one block in the next block you can use overlapping computations.
 
 ## Overlapping Computations
+Sometimes you want to operate on a per-block basis, but you need some information from neighboring blocks. Example operations include the following:
 
+- Convolve a filter across an image
+- Rolling sum/mean/max, …
+- Search for image motifs like a Gaussian blob that might span the border of a block
+- Evaluate a partial derivative
+
+Dask Array supports these operations by creating a new array where each block is slightly expanded by the borders of its neighbors. This costs an excess copy and the communication of many small chunks, but allows localized functions to evaluate in an embarrassingly parallel manner.
 
 **Related Documentation**
    - [Array Overlap](https://docs.dask.org/en/latest/array-overlap.html)
+
+The main API for these computations is the ``map_overlap`` method. The ``map_overlap`` method is very similar to ``map_blocks`` but has the additional arguments: ``depth``, ``boundary``, and ``trim``.
+
+Here is an example of calculating the derivative:
+
+```python
+import numpy as np
+import dask.array as da
+
+x = np.array([1, 1, 2, 3, 3, 3, 2, 1, 1])
+x = da.from_array(x, chunks=5)
+
+def derivative(x):
+    return x - np.roll(x, 1)
+
+y = x.map_overlap(derivative, depth=1, boundary=0)
+y.compute()
+```
+
+In this case each block shares 1 value from its neighboring block - ``depth``. And since we set ``boundary=0``on the outer edges of the array, the first and last block are padded with the integer 0.
+
+Since we haven't specified ``trim`` it is true by default meaning that the overlap is removed before returning the results.
+
+![](https://docs.dask.org/en/latest/_images/overlapping-neighbors.png)
+
+If you inspect the task graph (`y.visualize()`) you'll see two mostly independent towers of tasks, with just some value sharing at the edges.
+
+### Exercise
+Lets apply a gaussian filter to an image following the example from the [scipy docs](https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html)
+
+First create a dask array from the numpy array:
+
+```python
+from scipy import misc
+import dask.array as da
+
+a = da.from_array(misc.ascent(), chunks=(128, 128))
+```
+
+Now use ``map_overlap`` to apply ``gausian_filter`` to each block.
+
+<details>
+
+```python
+from scipy.ndimage import gaussian_filter
+
+b = a.map_overlap(gaussian_filter, depth=10, sigma=5, boundary="periodic")
+```
+
+</details>
+
+Now we can plot the results:
+
+```python
+import matplotlib.pyplot as plt
+
+fig, (ax1, ax2) = plt.subplots(1, 2)
+ax1.imshow(a)
+ax2.imshow(b)
+plt.show()
+```
+
+Notice that if you set the depth to a smaller value, you can see the edges of the blocks in the output image.
 
 ## Reduction
 

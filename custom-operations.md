@@ -343,12 +343,6 @@ plt.show()
 
 Notice that if you set the depth to a smaller value, you can see the edges of the blocks in the output image.
 
-## Reduction
-
-**Related Documentation**
-   - [`dask.array.reduction`](http://dask.pydata.org/en/latest/array-api.html#dask.dataframe.Array.reduction)
-   - [`dask.dataframe.reduction`](http://dask.pydata.org/en/latest/dataframe-api.html#dask.dataframe.DataFrame.reduction)
-
 ## Blockwise Computations
 
 Blockwise computations provide the infrastructure for implementing ``map_blocks`` and many
@@ -400,6 +394,65 @@ def transpose(a, axes=None):
     )
 ```
 [source](https://github.com/dask/dask/blob/4569b150db36af0aa9d9a8d318b4239a78e2eaec/dask/array/routines.py#L161:L170)
+
+## Reduction
+All of the methods that we have covered so far assume that the output array will be similar to the input array. But where dask really shines is with aggregations. Each dask collection has a `reduction` method that is the generalized method that supports operations that reduce the dimensionality of the inputs.
+
+**Related Documentation**
+   - [`dask.array.reduction`](http://dask.pydata.org/en/latest/array-api.html#dask.dataframe.Array.reduction)
+   - [`dask.dataframe.reduction`](http://dask.pydata.org/en/latest/dataframe-api.html#dask.dataframe.DataFrame.reduction)
+
+
+### Internal uses
+
+This is the internal definition of sum on dask.Array. In it you can see that there is a
+regular ``np.sum`` applied across each block and then tree-reduced with ``np.sum`` again.
+
+```python
+def sum(a, axis=None, dtype=None, keepdims=False, split_every=None, out=None):
+    if dtype is None:
+        dtype = getattr(np.zeros(1, dtype=a.dtype).sum(), "dtype", object)
+    result = reduction(
+        a,
+        chunk.sum,  # this is just `np.sum`
+        chunk.sum,  # this is just `np.sum`
+        axis=axis,
+        keepdims=keepdims,
+        dtype=dtype,
+        split_every=split_every,
+        out=out,
+    )
+    return result
+```
+
+In this case the  ``chunk``, ``combine`` and ``aggregate`` functions are all the same.
+
+```python
+import numpy as np
+import dask.array as da
+
+a = da.from_array(np.arange(1000000).reshape(1000, 1000), chunks=(500, 200))
+b = a.sum()
+```
+
+By visualizing `b` we can see how the tree reduction works. First the ``chunk`` function is applied to each block, then every 4 chunks are combined using the ``combine`` function. This keeps going until there are only 2 chunks left, then the ``aggregate`` function is used to finish up.
+
+### Exercise
+
+See how the graph changes when you set the chunks to `(500, 500)` or `(500, 300)`
+
+### Controlling reduction with kwargs
+
+There are a few handy keyword arguments that you can use to control the shape of the task graph.
+
+The most useful of these are ``split_every`` which controls the number of chunk outputs that are used as input to each ``combine`` call. Try setting split_every on ``a.sum(split_every={0: 2, 1: 5})`` and visualizing the task graph to see the impact.
+
+> **Side note**
+> You can use reductions to calculate aggregations per-block reduction even if you don't want to combine and aggregate the results of those blocks:
+>
+> ```python
+> da.reduction(a, np.sum, lambda x, **kwargs: x, dtype=int).compute()
+> ```
 
 ## Groupby Aggregation
 

@@ -1,43 +1,60 @@
-# Hacking Dask @ PyCon 2021
+# Hacking Dask: Diving into Dask's Internals
 
 [![Build](https://github.com/jrbourbeau/hacking-dask/actions/workflows/build.yml/badge.svg)](https://github.com/jrbourbeau/hacking-dask/actions/workflows/build.yml)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jrbourbeau/hacking-dask/main?urlpath=lab)
 
-This repository contains materials for the "Hacking Dask: Diving Into Dask’s Internals" tutorial at PyCon 2021.
-
----
-
 ## 🚨🚨 The materials here are still being actively developed. Please check back later. 🚨🚨
 
----
+This repository contains materials for the "Hacking Dask: Diving Into Dask’s Internals" tutorial at PyCon 2021.
 
-## Outline
+## Running the tutorial
 
-- **Introduction [10 minutes]**
-  - Provide an overview of what will be covered in the tutorial.
-  - Ensure everyone is set up with tutorial materials.
+There are two different ways in which you can set up and go through the tutorial materials. Both of which are outlined in the table below.
 
-- **An overview of Dask [30 minutes]**
-  - Review Dask’s delayed, array, and DataFrame interfaces.
-  - Recap the components of Dask’s distributed scheduler.
-  - Participants will recap the basics of how to use the high-level Dask interfaces to accomplish well supported tasks and parallelize custom algorithms.
+|     Method    | Setup | Description |
+| :-----------: | :-----------: | ----------- |
+| Binder        | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jrbourbeau/hacking-dask/main?urlpath=lab)         | Run the tutorial notebooks on mybinder.org without installing anything locally.       |
+| Local install | [Instructions](#Local-installation-instructions)          | Download the tutorial notebooks and install the necessary packages (via `conda`) locally. Setting things up locally can take a few minutes, so we recommend going through the installation steps prior to the tutorial.    |
 
-*10 minute break*
 
-- **Advanced Dask Collections [50 minutes]**
-  - Discuss applying custom operations on Dask arrays and DataFrames.
-  - Discuss Dask’s graph optimization system.
-  - Review the Dask collection interface and implement our own custom collection.
-  - Participants will gain a deeper insight into the task graph system underlying Dask collections.
+## Local installation instructions
 
-*10 minute break*
+### 1. Clone the repository
 
-- **Hacking the distributed scheduler [50 minutes]**
-  - Highlight built in coordination primitives like `Lock`s, `Event`s, and `Semaphore`s.
-  - Demonstrate how to customize worker and scheduler behavior using Dask’s plugin system.
-  - Learn how to inspect the internal state of a cluster’s scheduler and workers.
-  - Participants will gain a better understanding of Dask internals and how to troubleshoot common pitfalls of distributed computing.
+First clone this repository to your local machine via:
 
-- **Conclusion [10 minutes]**
-  - Recap what we learned.
-  - Provide references to links to additional community resources.
+```
+git clone https://github.com/jrbourbeau/hacking-dask
+```
+
+### 2. Download conda (if you haven't already)
+
+If you do not already have the conda package manager installed, please follow the instructions [here](https://docs.conda.io/en/latest/miniconda.html). 
+
+### 3. Create a conda environment
+
+Navigate to the `hacking-dask/` directory and create a new conda environment with the required
+packages via:
+
+```terminal
+cd hacking-dask
+conda env create --file binder/environment.yml
+```
+
+This will create a new conda environment named "hacking-dask".
+
+### 4. Activate the environment
+
+Next, activate the environment:
+
+```
+conda activate hacking-dask
+```
+
+### 5. Launch JupyterLab
+
+Finally, launch JupyterLab with:
+
+```
+jupyter lab
+```

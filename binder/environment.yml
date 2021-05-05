@@ -1,4 +1,4 @@
-name: dask-binder-template
+name: hacking-dask
 channels:
   - conda-forge
 dependencies:

@@ -2,7 +2,7 @@ name: Build
 on: [push]
 
 jobs:
-  build:
+  binder:
     runs-on: ubuntu-latest
     steps:
 
@@ -12,7 +12,7 @@ jobs:
         NO_PUSH: true
         MYBINDERORG_TAG: ${{ github.event.ref }}
 
-  check-os:
+  conda-solve:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

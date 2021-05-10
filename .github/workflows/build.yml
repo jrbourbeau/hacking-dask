@@ -13,7 +13,7 @@ jobs:
         MYBINDERORG_TAG: ${{ github.event.ref }}
 
   check-os:
-    runs-on: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout source
         uses: actions/checkout@v2

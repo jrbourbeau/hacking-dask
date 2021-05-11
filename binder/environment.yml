@@ -5,6 +5,10 @@ dependencies:
   - python=3.9
   - dask=2021.03.0
   - python-graphviz
+  - imageio
+  - scipy
+  - matplotlib
+  - pyarrow
   # JupyterLab extensions
   - jupyterlab>=3
   - dask-labextension

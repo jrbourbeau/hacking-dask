@@ -5,6 +5,11 @@ dependencies:
   - python=3.9
   - dask=2021.04.1
   - distributed=2021.04.1
+  - python-graphviz
+  - imageio
+  - scipy
+  - matplotlib
+  - pyarrow
   # JupyterLab + extensions
   - jupyterlab>=3
   - dask-labextension

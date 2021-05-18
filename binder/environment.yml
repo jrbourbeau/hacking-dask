@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.9
-  - dask=2021.04.1
+  - dask=2021.05.0
   - python-graphviz
   - imageio
   - scipy
@@ -14,5 +14,3 @@ dependencies:
   - jupyterlab>=3
   - dask-labextension
   - ipywidgets
-  - pip:
-    - git+https://github.com/dask/distributed.git@aa9f8d92bf22abb97a913afe16db726868571e9c
